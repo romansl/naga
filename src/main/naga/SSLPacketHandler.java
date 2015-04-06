@@ -21,17 +21,18 @@ SOFTWARE.
 */
 package naga;
 
-import naga.exception.ProtocolViolationException;
-import naga.packetreader.RawPacketReader;
-import naga.packetwriter.RawPacketWriter;
-
-import javax.net.ssl.SSLEngine;
-import javax.net.ssl.SSLEngineResult;
-import javax.net.ssl.SSLException;
 import java.io.EOFException;
 import java.nio.ByteBuffer;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
+
+import javax.net.ssl.SSLEngine;
+import javax.net.ssl.SSLEngineResult;
+import javax.net.ssl.SSLException;
+
+import naga.exception.ProtocolViolationException;
+import naga.packetreader.RawPacketReader;
+import naga.packetwriter.RawPacketWriter;
 
 /**
  * Undocumented Class
@@ -252,7 +253,8 @@ public class SSLPacketHandler implements PacketReader, PacketWriter
         if (NIOUtils.isEmpty(byteBuffers))
         {
             // Exit early if we have no data to encrypt.
-            if (m_initialOutBuffer == null) return null;
+            if (m_initialOutBuffer == null)
+                return new ByteBuffer[] {ByteBuffer.allocate(0)};
         }
         else
         {
