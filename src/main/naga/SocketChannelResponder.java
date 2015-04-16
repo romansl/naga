@@ -21,8 +21,6 @@ SOFTWARE.
 */
 package naga;
 
-import naga.packetreader.RawPacketReader;
-
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
@@ -31,6 +29,8 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicLong;
+
+import naga.packetreader.RawPacketReader;
 
 /**
  * @author Christoffer Lerno
@@ -59,6 +59,7 @@ class SocketChannelResponder extends ChannelResponder implements NIOSocket
         m_socketWriter = new SocketWriter();
 	}
 
+	@Override
 	void keyInitialized()
 	{
 		if (!isConnected())
@@ -67,10 +68,12 @@ class SocketChannelResponder extends ChannelResponder implements NIOSocket
 		}
 	}
 
+	@Override
 	public void closeAfterWrite()
 	{
         queue(new Runnable() {
-            public void run()
+            @Override
+			public void run()
             {
                 m_packetQueue.clear();
                 close(null);
@@ -78,13 +81,15 @@ class SocketChannelResponder extends ChannelResponder implements NIOSocket
         });
 	}
 
-    public void queue(Runnable runnable)
+    @Override
+	public void queue(Runnable runnable)
     {
         m_packetQueue.offer(runnable);
         getNIOService().queue(new AddInterestEvent(SelectionKey.OP_WRITE));
     }
 
-    public boolean write(byte[] packet, Object tag)
+    @Override
+	public boolean write(byte[] packet, Object tag)
     {
         long currentQueueSize = m_bytesInQueue.addAndGet(packet.length);
         if (m_maxQueueSize > 0 && currentQueueSize > m_maxQueueSize)
@@ -100,6 +105,7 @@ class SocketChannelResponder extends ChannelResponder implements NIOSocket
         return true;
     }
 
+	@Override
 	public boolean write(byte[] packet)
 	{
         return write(packet, null);
@@ -145,6 +151,7 @@ class SocketChannelResponder extends ChannelResponder implements NIOSocket
         }
     }
 
+	@Override
 	public void socketReadyForRead()
     {
 		if (!isOpen()) return;
@@ -170,48 +177,52 @@ class SocketChannelResponder extends ChannelResponder implements NIOSocket
 		}
 	}
 
-	private void fillCurrentOutgoingBuffer() throws IOException
+	private void fillCurrentOutgoingBuffer()
 	{
         if (m_socketWriter.isEmpty())
         {
             // Retrieve next packet from the queue.
             Object nextPacket = m_packetQueue.poll();
-            while (nextPacket != null && nextPacket instanceof Runnable)
+            while (nextPacket instanceof Runnable)
             {
                 ((Runnable) nextPacket).run();
                 nextPacket = m_packetQueue.poll();
             }
-            if (nextPacket == null) return;
-            byte[] data;
-            Object tag = null;
+
+			if (nextPacket == null)
+				return;
+
+            final byte[] data;
+            final Object tag;
             if (nextPacket instanceof byte[])
             {
                 data = (byte[]) nextPacket;
+				tag = null;
             }
             else
             {
                 data = (byte[])((Object[])nextPacket)[0];
                 tag = ((Object[])nextPacket)[1];
             }
+
             m_socketWriter.setPacket(data, tag);
             // Remove the space reserved in the queue.
             m_bytesInQueue.addAndGet(-data.length);
         }
 	}
 
+	@Override
 	public void socketReadyForWrite()
 	{
 		try
 		{
 			deleteInterest(SelectionKey.OP_WRITE);
-			if (!isOpen()) return;
+
+			if (!isOpen())
+				return;
+
 			fillCurrentOutgoingBuffer();
 
-			// Return if there is nothing in the buffer to send.
-			if (m_socketWriter.isEmpty())
-            {
-                return;
-            }
 			while (!m_socketWriter.isEmpty())
 			{
                 boolean bytesWereWritten = m_socketWriter.write(getChannel());
@@ -233,7 +244,8 @@ class SocketChannelResponder extends ChannelResponder implements NIOSocket
 			close(e);
 		}
 	}
-	
+
+	@Override
 	public void socketReadyForConnect()
 	{
 		try
@@ -263,21 +275,25 @@ class SocketChannelResponder extends ChannelResponder implements NIOSocket
 		return getChannel().socket();
 	}
 
+	@Override
 	public long getBytesRead()
 	{
 		return m_socketReader.getBytesRead();
 	}
 
+	@Override
 	public long getBytesWritten()
 	{
 		return m_socketWriter.getBytesWritten();
 	}
 
+	@Override
 	public long getTimeOpen()
 	{
 		return m_timeOpened > 0 ? System.currentTimeMillis() - m_timeOpened : -1;
 	}
 
+	@Override
 	public long getWriteQueueSize()
 	{
 		return m_bytesInQueue.get();
@@ -298,6 +314,7 @@ class SocketChannelResponder extends ChannelResponder implements NIOSocket
 	/**
 	 * @return the current maximum queue size.
 	 */
+	@Override
 	public int getMaxQueueSize()
 	{
 		return m_maxQueueSize;
@@ -309,11 +326,13 @@ class SocketChannelResponder extends ChannelResponder implements NIOSocket
 	 *
 	 * @param maxQueueSize the new max queue size. A value less than 1 is an unbounded queue.
 	 */
+	@Override
 	public void setMaxQueueSize(int maxQueueSize)
 	{
 		m_maxQueueSize = maxQueueSize;
 	}
 
+	@Override
 	public void listen(SocketObserver socketObserver)
 	{
 		markObserverSet();
@@ -353,27 +372,32 @@ class SocketChannelResponder extends ChannelResponder implements NIOSocket
 		}
 	}
 
+	@Override
 	public void setPacketReader(PacketReader packetReader)
 	{
 		m_packetReader = packetReader;
 	}
 
+	@Override
 	public void setPacketWriter(final PacketWriter packetWriter)
 	{
         if (packetWriter == null) throw new NullPointerException();
         queue(new Runnable() {
-            public void run()
+            @Override
+			public void run()
             {
                 m_socketWriter.setPacketWriter(packetWriter);
             }
         });
  	}
 
+	@Override
 	public SocketChannel getChannel()
 	{
 		return (SocketChannel) super.getChannel();
 	}
 
+	@Override
 	protected void shutdown(Exception e)
 	{
 		m_timeOpened = -1;
@@ -392,7 +416,8 @@ class SocketChannelResponder extends ChannelResponder implements NIOSocket
             m_interest = interest;
         }
 
-        public void run()
+        @Override
+		public void run()
         {
             addInterest(m_interest);
         }
@@ -409,6 +434,7 @@ class SocketChannelResponder extends ChannelResponder implements NIOSocket
 			m_newObserver = socketObserver;
 		}
 
+		@Override
 		public void run()
 		{
 			m_responder.m_socketObserver =  m_newObserver;
@@ -430,6 +456,7 @@ class SocketChannelResponder extends ChannelResponder implements NIOSocket
 		}
 	}
 
+	@Override
 	public Socket socket()
 	{
 		return getChannel().socket();

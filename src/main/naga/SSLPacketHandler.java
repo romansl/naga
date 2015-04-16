@@ -39,19 +39,17 @@ import naga.packetwriter.RawPacketWriter;
  *
  * @author Christoffer Lerno
  */
-public class SSLPacketHandler implements PacketReader, PacketWriter
-{
-    private final static Executor TASK_HANDLER = Executors.newSingleThreadExecutor();
+public class SSLPacketHandler implements PacketReader, PacketWriter {
+    private static final Executor TASK_HANDLER = Executors.newSingleThreadExecutor();
 
-    private final static ThreadLocal<ByteBuffer> SSL_BUFFER = new ThreadLocal<ByteBuffer>()
-    {
+    private static final ThreadLocal<ByteBuffer> SSL_BUFFER = new ThreadLocal<ByteBuffer>() {
         @Override
-        protected ByteBuffer initialValue()
-        {
+        protected ByteBuffer initialValue() {
             // Should be plenty.
             return ByteBuffer.allocate(64 * 1024);
         }
     };
+    public static final ByteBuffer[] ZERO_DATA = {ByteBuffer.allocate(0)};
 
     private final SSLEngine m_engine;
     private PacketReader m_reader;
@@ -62,8 +60,7 @@ public class SSLPacketHandler implements PacketReader, PacketWriter
     private final SSLSocketChannelResponder m_responder;
     private boolean m_sslInitiated;
 
-    public SSLPacketHandler(SSLEngine engine, NIOSocket socket, SSLSocketChannelResponder responder)
-    {
+    public SSLPacketHandler(SSLEngine engine, NIOSocket socket, SSLSocketChannelResponder responder) {
         m_engine = engine;
         m_socket = socket;
         m_partialIncomingBuffer = null;
@@ -73,48 +70,40 @@ public class SSLPacketHandler implements PacketReader, PacketWriter
         m_sslInitiated = false;
     }
 
-    public PacketReader getReader()
-    {
+    public PacketReader getReader() {
         return m_reader;
     }
 
-    public void setReader(PacketReader reader)
-    {
+    public void setReader(PacketReader reader) {
         m_reader = reader;
     }
 
-    public PacketWriter getWriter()
-    {
+    public PacketWriter getWriter() {
         return m_writer;
     }
 
-    public void setWriter(PacketWriter writer)
-    {
+    public void setWriter(PacketWriter writer) {
         m_writer = writer;
     }
 
-    private void queueSSLTasks()
-    {
-        if (!m_sslInitiated) return;
+    private void queueSSLTasks() {
+        if (!m_sslInitiated)
+            return;
         int tasksScheduled = 0;
         Runnable task;
-        while ((task = m_engine.getDelegatedTask()) != null)
-        {
+        while ((task = m_engine.getDelegatedTask()) != null) {
             TASK_HANDLER.execute(task);
             tasksScheduled++;
         }
-        if (tasksScheduled == 0)
-        {
+        if (tasksScheduled == 0) {
             return;
         }
-        TASK_HANDLER.execute(new Runnable()
-        {
-            public void run()
-            {
-                m_socket.queue(new Runnable()
-                {
-                    public void run()
-                    {
+        TASK_HANDLER.execute(new Runnable() {
+            @Override
+            public void run() {
+                m_socket.queue(new Runnable() {
+                    @Override
+                    public void run() {
                         reactToHandshakeStatus(m_engine.getHandshakeStatus());
                     }
                 });
@@ -122,23 +111,20 @@ public class SSLPacketHandler implements PacketReader, PacketWriter
         });
     }
 
-    public byte[] nextPacket(ByteBuffer byteBuffer) throws ProtocolViolationException
-    {
-        if (!m_sslInitiated)
-        {
+    @Override
+    public byte[] nextPacket(ByteBuffer byteBuffer) throws ProtocolViolationException {
+        if (!m_sslInitiated) {
             return m_reader.nextPacket(byteBuffer);
         }
 
-        try
-        {
+        try {
             // Retrieve the local buffer.
             ByteBuffer targetBuffer = SSL_BUFFER.get();
             targetBuffer.clear();
 
             // Unwrap the data (both buffers should be sufficiently large)
             SSLEngineResult result = m_engine.unwrap(byteBuffer, targetBuffer);
-            switch (result.getStatus())
-            {
+            switch (result.getStatus()) {
                 case BUFFER_UNDERFLOW:
                     // Right, let's wait for more data.
                     return null;
@@ -155,19 +141,16 @@ public class SSLPacketHandler implements PacketReader, PacketWriter
             reactToHandshakeStatus(result.getHandshakeStatus());
 
             return retrieveDecryptedPacket(targetBuffer);
-        }
-        catch (SSLException e)
-        {
+        } catch (SSLException e) {
             m_responder.closeDueToSSLException(e);
             return null;
         }
     }
 
-    private void reactToHandshakeStatus(SSLEngineResult.HandshakeStatus status)
-    {
-        if (!m_sslInitiated) return;
-        switch (status)
-        {
+    private void reactToHandshakeStatus(SSLEngineResult.HandshakeStatus status) {
+        if (!m_sslInitiated)
+            return;
+        switch (status) {
             case NOT_HANDSHAKING:
             case NEED_UNWRAP:
                 break;
@@ -183,8 +166,7 @@ public class SSLPacketHandler implements PacketReader, PacketWriter
         }
     }
 
-    private byte[] retrieveDecryptedPacket(ByteBuffer targetBuffer) throws ProtocolViolationException
-    {
+    private byte[] retrieveDecryptedPacket(ByteBuffer targetBuffer) throws ProtocolViolationException {
         // Prepare the buffer for reading.
         targetBuffer.flip();
 
@@ -192,24 +174,22 @@ public class SSLPacketHandler implements PacketReader, PacketWriter
         m_partialIncomingBuffer = NIOUtils.join(m_partialIncomingBuffer, targetBuffer);
 
         // Skip if the data is empty. This will be the case during handshaking.
-        if (m_partialIncomingBuffer == null || m_partialIncomingBuffer.remaining() == 0) return SKIP_PACKET;
+        if (m_partialIncomingBuffer == null || m_partialIncomingBuffer.remaining() == 0)
+            return SKIP_PACKET;
 
         // Delegate packet creation to the reader.
         return m_reader.nextPacket(m_partialIncomingBuffer);
     }
 
-    public ByteBuffer[] write(ByteBuffer[] byteBuffers)
-    {
-        if (!m_sslInitiated)
-        {
+    @Override
+    public ByteBuffer[] write(ByteBuffer[] byteBuffers) {
+        if (!m_sslInitiated) {
             return m_writer.write(byteBuffers);
         }
 
         // Check if we are done handshaking.
-        if (m_engine.getHandshakeStatus() != SSLEngineResult.HandshakeStatus.NOT_HANDSHAKING)
-        {
-            if (!NIOUtils.isEmpty(byteBuffers))
-            {
+        if (m_engine.getHandshakeStatus() != SSLEngineResult.HandshakeStatus.NOT_HANDSHAKING) {
+            if (!NIOUtils.isEmpty(byteBuffers)) {
                 // If this is regular data, store this in the initial outbuffer.
                 m_initialOutBuffer = NIOUtils.concat(m_initialOutBuffer, m_writer.write(byteBuffers));
                 byteBuffers = new ByteBuffer[0];
@@ -217,12 +197,10 @@ public class SSLPacketHandler implements PacketReader, PacketWriter
             // Borrow the shared buffer.
             ByteBuffer buffer = SSL_BUFFER.get();
             ByteBuffer[] buffers = null;
-            try
-            {
+            try {
                 // Create handshake data.
                 SSLEngineResult result = null;
-                while (m_engine.getHandshakeStatus() == SSLEngineResult.HandshakeStatus.NEED_WRAP)
-                {
+                while (m_engine.getHandshakeStatus() == SSLEngineResult.HandshakeStatus.NEED_WRAP) {
                     buffer.clear();
                     result = m_engine.wrap(byteBuffers, buffer);
                     buffer.flip();
@@ -230,18 +208,18 @@ public class SSLPacketHandler implements PacketReader, PacketWriter
                 }
 
                 // If we for some reason entered here but did not need to wrap anything, exit.
-                if (result == null) return null;
+                if (result == null)
+                    return ZERO_DATA;
 
-                if (result.getStatus() != SSLEngineResult.Status.OK) throw new SSLException("Unexpectedly not ok wrapping handshake data, was " + result.getStatus());
+                if (result.getStatus() != SSLEngineResult.Status.OK)
+                    throw new SSLException("Unexpectedly not ok wrapping handshake data, was " + result.getStatus());
 
                 reactToHandshakeStatus(result.getHandshakeStatus());
-            }
-            catch (SSLException e)
-            {
+            } catch (SSLException e) {
                 // Better error handling required!
                 throw new RuntimeException(e);
             }
-            return buffers;
+            return buffers == null ? ZERO_DATA : buffers;
         }
 
         // We are not handshaking, so encrypt the data using wrap
@@ -250,21 +228,17 @@ public class SSLPacketHandler implements PacketReader, PacketWriter
         ByteBuffer buffer = SSL_BUFFER.get();
         buffer.clear();
 
-        if (NIOUtils.isEmpty(byteBuffers))
-        {
+        if (NIOUtils.isEmpty(byteBuffers)) {
             // Exit early if we have no data to encrypt.
             if (m_initialOutBuffer == null)
-                return new ByteBuffer[] {ByteBuffer.allocate(0)};
-        }
-        else
-        {
+                return ZERO_DATA;
+        } else {
             // Only convert non-empty buffers
             byteBuffers = m_writer.write(byteBuffers);
         }
 
         // If we have an initial buffer, send it.
-        if (m_initialOutBuffer != null)
-        {
+        if (m_initialOutBuffer != null) {
             byteBuffers = NIOUtils.concat(m_initialOutBuffer, byteBuffers);
             m_initialOutBuffer = null;
         }
@@ -272,16 +246,12 @@ public class SSLPacketHandler implements PacketReader, PacketWriter
         ByteBuffer[] encrypted = null;
 
         // While we have things left to encrypt.
-        while (!NIOUtils.isEmpty(byteBuffers))
-        {
+        while (!NIOUtils.isEmpty(byteBuffers)) {
             // Clear our huge buffer.
             buffer.clear();
-            try
-            {
+            try {
                 m_engine.wrap(byteBuffers, buffer);
-            }
-            catch (SSLException e)
-            {
+            } catch (SSLException e) {
                 throw new RuntimeException(e);
             }
             buffer.flip();
@@ -291,30 +261,27 @@ public class SSLPacketHandler implements PacketReader, PacketWriter
         }
 
         // Return our encrypted data.
-        return encrypted;
+        return encrypted == null ? ZERO_DATA : encrypted;
     }
 
-    public SSLEngine getSSLEngine()
-    {
+    public SSLEngine getSSLEngine() {
         return m_engine;
     }
 
-    void begin() throws SSLException
-    {
+    void begin() throws SSLException {
         m_engine.beginHandshake();
         m_sslInitiated = true;
         reactToHandshakeStatus(m_engine.getHandshakeStatus());
     }
 
-    public void closeEngine()
-    {
-        if (!m_sslInitiated) return;
+    public void closeEngine() {
+        if (!m_sslInitiated)
+            return;
         m_engine.closeOutbound();
         m_responder.write(new byte[0]);
     }
 
-    public boolean isEncrypted()
-    {
+    public boolean isEncrypted() {
         return m_sslInitiated;
     }
 }
