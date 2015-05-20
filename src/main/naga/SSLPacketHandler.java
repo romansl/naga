@@ -21,18 +21,16 @@ SOFTWARE.
 */
 package naga;
 
-import java.io.EOFException;
-import java.nio.ByteBuffer;
-import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
+import naga.exception.ProtocolViolationException;
+import naga.packetreader.RawPacketReader;
+import naga.packetwriter.RawPacketWriter;
 
 import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLEngineResult;
 import javax.net.ssl.SSLException;
-
-import naga.exception.ProtocolViolationException;
-import naga.packetreader.RawPacketReader;
-import naga.packetwriter.RawPacketWriter;
+import java.nio.ByteBuffer;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 
 /**
  * Undocumented Class
@@ -132,8 +130,7 @@ public class SSLPacketHandler implements PacketReader, PacketWriter {
                     // This should never happen as we are ensuring the buffer is large enough.
                     throw new ProtocolViolationException("SSL Buffer Overflow");
                 case CLOSED:
-                    m_responder.connectionBroken(m_socket, new EOFException("SSL Connection closed"));
-                    return null;
+                    throw new ProtocolViolationException("SSL Connection closed");
                 case OK:
                     // Do nothing, just follow the flow.
             }
