@@ -137,7 +137,14 @@ public class SSLPacketHandler implements PacketReader, PacketWriter {
             // We might need to queue tasks or send data as a response to this packet.
             reactToHandshakeStatus(result.getHandshakeStatus());
 
-            return retrieveDecryptedPacket(targetBuffer);
+            final byte[] decryptedPacket = retrieveDecryptedPacket(targetBuffer);
+            if (decryptedPacket != null)
+                return decryptedPacket;
+
+            if (byteBuffer.remaining() > 0)
+                return SKIP_PACKET;
+
+            return null;
         } catch (SSLException e) {
             m_responder.closeDueToSSLException(e);
             return null;
