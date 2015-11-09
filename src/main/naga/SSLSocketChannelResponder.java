@@ -116,6 +116,11 @@ class SSLSocketChannelResponder implements NIOSocketSSL, SocketObserver
         m_packetHandler.setReader(packetReader);
     }
 
+    @Override
+    public PacketReader getPacketReader() {
+        return m_packetHandler.getReader();
+    }
+
     public void setPacketWriter(final PacketWriter packetWriter)
     {
         m_wrappedSocket.queue(new Runnable()
@@ -125,6 +130,11 @@ class SSLSocketChannelResponder implements NIOSocketSSL, SocketObserver
                 m_packetHandler.setWriter(packetWriter);
             }
         });
+    }
+
+    @Override
+    public PacketWriter getPacketWriter() {
+        return m_packetHandler.getWriter();
     }
 
     public void listen(SocketObserver socketObserver)
@@ -203,7 +213,7 @@ class SSLSocketChannelResponder implements NIOSocketSSL, SocketObserver
             m_nioService.notifyException(e);
         }
     }
-    
+
     public void connectionBroken(NIOSocket nioSocket, Exception exception)
     {
         try

@@ -21,6 +21,8 @@ SOFTWARE.
 */
 package naga;
 
+import naga.packetreader.RawPacketReader;
+
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
@@ -29,8 +31,6 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicLong;
-
-import naga.packetreader.RawPacketReader;
 
 /**
  * @author Christoffer Lerno
@@ -379,6 +379,11 @@ class SocketChannelResponder extends ChannelResponder implements NIOSocket
 	}
 
 	@Override
+	public PacketReader getPacketReader() {
+		return m_packetReader;
+	}
+
+	@Override
 	public void setPacketWriter(final PacketWriter packetWriter)
 	{
         if (packetWriter == null) throw new NullPointerException();
@@ -390,6 +395,11 @@ class SocketChannelResponder extends ChannelResponder implements NIOSocket
             }
         });
  	}
+
+	@Override
+	public PacketWriter getPacketWriter() {
+		return m_socketWriter.getPacketWriter();
+	}
 
 	@Override
 	public SocketChannel getChannel()

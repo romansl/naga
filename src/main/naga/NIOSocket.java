@@ -147,6 +147,8 @@ public interface NIOSocket extends NIOAbstractSocket
 	 */
 	void setPacketReader(PacketReader packetReader);
 
+	PacketReader getPacketReader();
+
 	/**
 	 * Sets the packet writer for this socket.
      * <p>
@@ -156,6 +158,8 @@ public interface NIOSocket extends NIOAbstractSocket
 	 * @param packetWriter the packet writer to interpret the incoming byte stream.
 	 */
 	void setPacketWriter(PacketWriter packetWriter);
+
+	PacketWriter getPacketWriter();
 
 	/**
 	 * Opens the socket for reads.
