@@ -47,7 +47,7 @@ public class SSLPacketHandler implements PacketReader, PacketWriter {
             return ByteBuffer.allocate(64 * 1024);
         }
     };
-    public static final ByteBuffer[] ZERO_DATA = {ByteBuffer.allocate(0)};
+    private static final ByteBuffer[] ZERO_DATA = {ByteBuffer.allocate(0)};
 
     private final SSLEngine m_engine;
     private PacketReader m_reader;
@@ -87,13 +87,13 @@ public class SSLPacketHandler implements PacketReader, PacketWriter {
     private void queueSSLTasks() {
         if (!m_sslInitiated)
             return;
-        int tasksScheduled = 0;
+        boolean isNoTasksScheduled = true;
         Runnable task;
         while ((task = m_engine.getDelegatedTask()) != null) {
             TASK_HANDLER.execute(task);
-            tasksScheduled++;
+            isNoTasksScheduled = false;
         }
-        if (tasksScheduled == 0) {
+        if (isNoTasksScheduled) {
             return;
         }
         TASK_HANDLER.execute(new Runnable() {
@@ -117,11 +117,11 @@ public class SSLPacketHandler implements PacketReader, PacketWriter {
 
         try {
             // Retrieve the local buffer.
-            ByteBuffer targetBuffer = SSL_BUFFER.get();
-            targetBuffer.clear();
+            ByteBuffer decryptedBuffer = SSL_BUFFER.get();
+            decryptedBuffer.clear();
 
             // Unwrap the data (both buffers should be sufficiently large)
-            SSLEngineResult result = m_engine.unwrap(byteBuffer, targetBuffer);
+            SSLEngineResult result = m_engine.unwrap(byteBuffer, decryptedBuffer);
             switch (result.getStatus()) {
                 case BUFFER_UNDERFLOW:
                     // Right, let's wait for more data.
@@ -137,14 +137,13 @@ public class SSLPacketHandler implements PacketReader, PacketWriter {
             // We might need to queue tasks or send data as a response to this packet.
             reactToHandshakeStatus(result.getHandshakeStatus());
 
-            final byte[] decryptedPacket = retrieveDecryptedPacket(targetBuffer);
-            if (decryptedPacket != null)
-                return decryptedPacket;
+            final byte[] decryptedPacket = retrieveDecryptedPacket(decryptedBuffer);
 
-            if (byteBuffer.remaining() > 0)
-                return SKIP_PACKET;
+            if (decryptedPacket == SKIP_PACKET && result.getHandshakeStatus() == SSLEngineResult.HandshakeStatus.NEED_WRAP) {
+                return null;
+            }
 
-            return null;
+            return decryptedPacket;
         } catch (SSLException e) {
             m_responder.closeDueToSSLException(e);
             return null;
@@ -170,12 +169,12 @@ public class SSLPacketHandler implements PacketReader, PacketWriter {
         }
     }
 
-    private byte[] retrieveDecryptedPacket(ByteBuffer targetBuffer) throws ProtocolViolationException {
+    private byte[] retrieveDecryptedPacket(ByteBuffer decryptedBuffer) throws ProtocolViolationException {
         // Prepare the buffer for reading.
-        targetBuffer.flip();
+        decryptedBuffer.flip();
 
         // Join the buffer with the partial buffer, this is because we need to internally buffer data that has been decrypted but does not yet form a complete packet.
-        m_partialIncomingBuffer = NIOUtils.join(m_partialIncomingBuffer, targetBuffer);
+        m_partialIncomingBuffer = NIOUtils.join(m_partialIncomingBuffer, decryptedBuffer);
 
         // Skip if the data is empty. This will be the case during handshaking.
         if (m_partialIncomingBuffer == null || m_partialIncomingBuffer.remaining() == 0)
